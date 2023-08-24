@@ -1,0 +1,286 @@
+import gspread
+import pandas as pd
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+import matplotlib.pyplot as plt
+import numpy as np
+import smtplib 
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
+import os
+
+# Define the scope
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
+# Ideally, you would retrieve the service account information from an environment variable or some other secured method provided by Jenkins
+credentials = ServiceAccountCredentials.from_json_keyfile_name(os.environ['SERVICE_ACCOUNT_JSON_PATH'], scope)
+
+# Authenticate with Google Sheets
+client = gspread.authorize(credentials)
+
+# Open the Google Sheet by its URL
+spreadsheet = client.open_by_url('https://docs.google.com/spreadsheets/d/1hTfOKNTEXn_1bu7zVypa7CVQCCdMUCYDvE_LLbkVl9k/edit#gid=0')
+
+# Get the first worksheet (or specify the worksheet you want to access)
+worksheet = spreadsheet.get_worksheet(0)
+
+# Get all values and convert to a Pandas DataFrame
+data = worksheet.get_all_values()
+df = pd.DataFrame(data[1:], columns=data[0])
+
+# Filter by the specified agents and create a copy
+agents = ['Abdul', 'Maite', 'Micaela', 'Sheetal', 'María Sol', 'Tanya']
+df_filtered = df[df["Agent's name"].isin(agents)].copy()
+# Get the current week number
+current_week_number = datetime.now().isocalendar()[1]
+
+# Calculate the previous week number
+previous_week_number = current_week_number - 1
+
+# Ensure "Score %" is numeric
+df['Score %'] = pd.to_numeric(df['Score %'], errors='coerce')
+
+# Get the current month's name
+current_month_name = datetime.now().strftime('%B')
+
+# Filter the DataFrame for the current month
+df_current_month = df[df['Month'] == current_month_name]
+
+# Calculate the average for the "Score %" column for the current month
+current_month_avg = df_current_month['Score %'].mean()
+print('Current Month Average:', current_month_avg)
+
+# Filter the DataFrame for the current week
+df_current_week = df[df['Week'] == str(current_week_number)]
+
+# Calculate the average for the "Score %" column for the current week
+current_week_avg = df_current_week['Score %'].mean()
+print('Current Week Average:', current_week_avg)
+
+# Filter the DataFrame for the previous week
+df_previous_week = df[df['Week'] == str(previous_week_number)]
+
+# Calculate the average for the "Score %" column for the previous week
+previous_week_avg = df_previous_week['Score %'].mean()
+print('Previous Week Average:', previous_week_avg)
+
+# Ensure "Score %" is numeric for the filtered DataFrame
+df_filtered['Score %'] = pd.to_numeric(df_filtered['Score %'], errors='coerce')
+
+# Calculate the average "Score %" for the current week, previous week, and current month using the filtered DataFrame
+current_week_avg_filtered = df_filtered[df_filtered['Week'] == str(current_week_number)]['Score %'].mean()
+previous_week_avg_filtered = df_filtered[df_filtered['Week'] == str(previous_week_number)]['Score %'].mean()
+current_month_avg_filtered = df_filtered[df_filtered['Month'] == current_month_name]['Score %'].mean()
+# Count the number of audits done in the current month
+number_of_audits_current_month = len(df_current_month)
+
+# Sorting the average scores and number of audits by agent's name for consistent plotting
+sorted_avg_scores = df_current_month.groupby('Agent\'s name')['Score %'].mean().sort_index()
+sorted_number_of_audits = df_current_month.groupby('Agent\'s name').size().sort_index()
+
+# Define the width of a bar
+bar_width = 0.35
+
+# Set the positions of the bars on x axis
+r1 = np.arange(len(sorted_avg_scores))
+r2 = [x + bar_width for x in r1]
+
+# Plotting the chart with the defined r1, r2, and bar_width
+
+# Create the bar chart for 'Average Score %'
+plt.figure(figsize=(12, 6))
+bars1 = plt.bar(r1, sorted_avg_scores.values, color='#FFA07A', width=bar_width, edgecolor='grey', label='Average Score %')
+
+# Add labels to 'Average Score %' bars
+for bar in bars1:
+    yval = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, yval - 5, round(yval, 2), ha='center', color='white', va='bottom')
+
+# Create the bar chart for 'Number of Audits'
+bars2 = plt.bar(r2, sorted_number_of_audits.values, color='#6495ED', width=bar_width, edgecolor='grey', label='Number of Audits')
+
+# Add labels to 'Number of Audits' bars
+for bar in bars2:
+    yval = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, yval + 2, int(yval), ha='center', color='black', va='bottom')
+
+# Add labels and title to the chart
+plt.xlabel('Agent\'s Name', fontweight='bold')
+plt.xticks([r + bar_width for r in range(len(sorted_avg_scores))], sorted_avg_scores.index, rotation=45)
+plt.ylabel('Score/Audits')
+plt.title('Average Score Percentage and Number of Audits for the Current Month')
+
+# Create legend & Show graphic
+plt.legend()
+plt.tight_layout()
+
+# Save the updated plot as an image file
+plt.savefig('updated_bar_chart.png')
+
+# Display the chart stoping the show as expecting it not to work while micrsoft task may not trigger it 
+#plt.show()
+
+# First, ensure you've extracted the previous month's name
+prev_month_number = datetime.now().month - 1 if datetime.now().month != 1 else 12
+prev_month_name = datetime(datetime.now().year, prev_month_number, 1).strftime('%B')
+
+# Filter the DataFrame for the previous month
+df_previous_month = df[df['Month'] == prev_month_name]
+
+
+# Ensure "Score %" is numeric for all relevant dataframes
+df_previous_month = df_previous_month.copy()
+df_previous_month['Score %'] = pd.to_numeric(df_previous_month['Score %'], errors='coerce')
+
+# Calculate average scores by agent for the previous month
+avg_scores_prev_month = df_previous_month.groupby('Agent\'s name')['Score %'].mean()
+
+desired_agents = ['Abdul', 'Maite', 'María Sol', 'Micaela', 'Sheetal', 'Tanya']
+
+# Filter for only the desired agents
+df_current_month = df_current_month[df_current_month["Agent's name"].isin(desired_agents)]
+df_previous_month = df_previous_month[df_previous_month["Agent's name"].isin(desired_agents)]
+
+# Calculate average scores by agent for the previous month and the current month
+avg_scores_prev_month = df_previous_month.groupby('Agent\'s name')['Score %'].mean()
+avg_scores_current_month = df_current_month.groupby('Agent\'s name')['Score %'].mean()
+
+# Ensure that the data for all desired agents is present, even if they don't have scores for one of the months.
+all_agents = set(desired_agents)  # Set to desired agents for clarity.
+avg_scores_prev_month = avg_scores_prev_month.reindex(all_agents, fill_value=np.nan)
+avg_scores_current_month = avg_scores_current_month.reindex(all_agents, fill_value=np.nan)
+
+# Define positions for bars
+barWidth = 0.35
+r1 = np.arange(len(all_agents))
+r2 = [x + barWidth for x in r1]
+
+# Create bar chart
+plt.figure(figsize=(12, 6))
+bars1 = plt.bar(r1, avg_scores_prev_month.values, color='#6495ED', width=barWidth, edgecolor='grey', label='Previous Month')
+bars2 = plt.bar(r2, avg_scores_current_month.values, color='#90EE90', width=barWidth, edgecolor='grey', label='Current Month')
+
+# Add labels to bars
+def label_bars(bars, color='black'):
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, round(yval, 2), ha='center', color=color, va='bottom')
+
+label_bars(bars1)
+label_bars(bars2)
+
+# Title & Subtitle
+plt.xlabel('Agents', fontweight='bold')
+plt.xticks([r + barWidth for r in range(len(all_agents))], all_agents, rotation=45)
+plt.ylabel('Scores')
+plt.title('Comparison of Previous Month and Current Month Scores for Selected Agents')
+
+# Create legend & Show graphic - # Display the chart stoping the show as expecting it not to work while micrsoft task may not trigger it
+plt.legend()
+plt.tight_layout()
+plt.savefig('comparison_chart.png')
+#plt.show()
+
+# Filter the DataFrame for the current week and scores below 85%
+low_scores_df = df_current_week[df_current_week['Score %'] < 85]
+
+# Convert this filtered DataFrame to an HTML table
+html_table = low_scores_df[['Dev ID', "Agent's name", 'Observations: Everything to keep in mind in profile editing', 'Score %']].to_html(index=False, border=0, classes='styled-table')
+
+# Calculate the number of rows in low_scores_df
+num_re_edited_profiles = len(low_scores_df)
+
+# Modify your email content to include the table
+body = f"""
+<html>
+<head>
+<style>
+    .styled-table {{
+        border-collapse: collapse;
+        margin: 25px 0;
+        font-size: 0.9em;
+        font-family: sans-serif;
+        text-align: left;
+        width: 100%;
+    }}
+    .styled-table th, .styled-table td {{
+        padding: 12px 15px;
+    }}
+    .styled-table tbody tr {{
+        border-bottom: 1px solid #dddddd;
+    }}
+    .styled-table tbody tr:nth-of-type(even) {{
+        background-color: #f3f3f3;
+    }}
+    .styled-table tbody tr:last-of-type {{
+        border-bottom: 2px solid #009879;
+    }}
+</style>
+</head>
+<body>
+<p>Dear All,</p>
+
+<p>I hope this email finds you well. I am writing to share the Quality Analysis scores for our team. Below are the details:</p>
+
+<ul>
+    <li><strong>Average Score for the Current Week</strong>: {current_week_avg}</li>
+    <li><strong>Average Score for the Previous Week</strong>: {previous_week_avg}</li>
+    <li><strong>Average Score for the Current Month</strong>: {current_month_avg}</li>
+    <li><strong>Number of Audits in the Current Month</strong>: {number_of_audits_current_month}</li>
+</ul>
+
+<p>Below is the table containing current week profiles that need to be Re-Edited since they have scores that are lower than 85%:</p>
+
+<p><strong>Number of Profiles to be Re-edited </strong>: {num_re_edited_profiles}</p>
+
+{html_table}
+
+<p> Attached, are two bar charts:
+
+1. Displaying agents' scores and their audited profiles for this month.
+2. Comparing scores from last month to this month.</p>
+
+<p>Best regards,<br>
+[Abdul Ahad Khan]<br>
+[PW]</p>
+</body>
+</html>
+"""
+
+subject = "Quality Analysis Scores"
+
+# Create email message
+msg = MIMEMultipart()
+msg['From'] = 'abdul.ahad@turing.com'
+msg['To'] = 'millenny.f@turing.com', 'anabella.morales@turing.com', 'micaela.ayosa@turing.com' 
+msg['Subject'] = subject
+msg.attach(MIMEText(body, 'html'))
+
+# Attach the first bar chart image
+with open('updated_bar_chart.png', 'rb') as file:
+    img1 = MIMEImage(file.read())
+    img1.add_header('Content-Disposition', 'attachment', filename='updated_bar_chart.png')
+    msg.attach(img1)
+
+# Attach the second comparison chart image
+with open('comparison_chart.png', 'rb') as file:
+    img2 = MIMEImage(file.read())
+    img2.add_header('Content-Disposition', 'attachment', filename='comparison_chart.png')
+    msg.attach(img2)
+
+# Send the email
+smtp_server = 'smtp.gmail.com'
+smtp_port =  587
+smtp_username = 'abdul.ahad@turing.com'
+# Get the SMTP password from an environment variable or a secured method Jenkins uses for secret management.
+smtp_password = os.environ['SMTP_PASSWORD']
+
+with smtplib.SMTP(smtp_server, smtp_port) as server:
+    server.starttls()
+    server.login(smtp_username, smtp_password)
+    server.send_message(msg)
+
+print("Email sent successfully!")
